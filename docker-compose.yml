@@ -18,7 +18,7 @@ services:
       retries: 10
 
   app:
-    image: ghcr.io/YOUR_GITHUB_USERNAME/tabel:latest
+    image: ghcr.io/matizzzen/tabel:latest
     container_name: tabel-app
     restart: unless-stopped
     env_file: .env
