@@ -1,0 +1,32 @@
+services:
+  db:
+    image: postgres:16-alpine
+    container_name: tabel-db
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: tabel
+      POSTGRES_PASSWORD: tabel
+      POSTGRES_DB: tabel
+    ports:
+      - "5432:5432"
+    volumes:
+      - tabel-db-data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U tabel -d tabel"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+  app:
+    image: ghcr.io/YOUR_GITHUB_USERNAME/tabel:latest
+    container_name: tabel-app
+    restart: unless-stopped
+    env_file: .env
+    ports:
+      - "3000:3000"
+    depends_on:
+      db:
+        condition: service_healthy
+
+volumes:
+  tabel-db-data:
