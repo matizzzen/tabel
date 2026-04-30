@@ -34,6 +34,7 @@ export default async function FullTimesheetPage({
     },
     include: {
       object: true,
+      createdBy: true,
       rows: {
         include: {
           employee: true,
@@ -46,8 +47,8 @@ export default async function FullTimesheetPage({
 
   const days = allDays(year, month);
 
-  // Merge all rows from all timesheets, grouped by department
-  const deptMap = new Map<string, { name: string; rows: MergedRow[] }>();
+  // Build flat list of rows then group by object → foreman → dept
+  const groupMap = new Map<string, RowGroup>();
 
   for (const ts of timesheets) {
     for (const row of ts.rows) {
@@ -58,15 +59,22 @@ export default async function FullTimesheetPage({
       const paidAmount = Number(row.paidAmount);
       const remainder = calcRemainder(pay, paidAmount);
 
-      const dept = row.departmentSnapshot;
-      if (!deptMap.has(dept)) deptMap.set(dept, { name: dept, rows: [] });
-      deptMap.get(dept)!.rows.push({
+      const objectName = ts.object.name;
+      const foremanName = ts.createdBy.fullName;
+      const deptName = row.departmentSnapshot;
+      const groupKey = `${objectName}\0${foremanName}\0${deptName}`;
+
+      if (!groupMap.has(groupKey)) {
+        groupMap.set(groupKey, { objectName, foremanName, deptName, rows: [] });
+      }
+      groupMap.get(groupKey)!.rows.push({
         id: row.id,
         fullName: row.employee.fullName,
         positionSnapshot: row.positionSnapshot,
         shiftRateSnapshot: Number(row.shiftRateSnapshot),
-        objectName: ts.object.name,
+        objectName,
         timesheetId: ts.id,
+        foremanName,
         paidAmount,
         notes: row.notes,
         dayMap: Object.fromEntries(dayMap),
@@ -77,13 +85,14 @@ export default async function FullTimesheetPage({
     }
   }
 
-  // Sort dept groups and rows within each
-  const deptGroups = [...deptMap.values()]
-    .sort((a, b) => a.name.localeCompare(b.name, "ru"))
-    .map((g) => ({
-      ...g,
-      rows: [...g.rows].sort((a, b) => a.fullName.localeCompare(b.fullName, "ru")),
-    }));
+  const ru = (a: string, b: string) => a.localeCompare(b, "ru");
+  const deptGroups = [...groupMap.values()]
+    .sort((a, b) =>
+      ru(a.objectName, b.objectName) ||
+      ru(a.foremanName, b.foremanName) ||
+      ru(a.deptName, b.deptName)
+    )
+    .map((g) => ({ ...g, rows: [...g.rows].sort((a, b) => ru(a.fullName, b.fullName)) }));
 
   const objectName = objectId !== "all"
     ? (objects.find((o) => o.id === objectId)?.name ?? "")
@@ -127,9 +136,17 @@ export default async function FullTimesheetPage({
         days={days}
         deptGroups={deptGroups}
         showObject={objectId === "all"}
+        isAdmin={canViewAllBrigades(session!.user.role)}
       />
     </div>
   );
+}
+
+export interface RowGroup {
+  objectName: string;
+  foremanName: string;
+  deptName: string;
+  rows: MergedRow[];
 }
 
 export interface MergedRow {
@@ -139,6 +156,7 @@ export interface MergedRow {
   shiftRateSnapshot: number;
   objectName: string;
   timesheetId: string;
+  foremanName: string | null;
   paidAmount: number;
   notes: string | null;
   dayMap: Record<number, DayValue>;

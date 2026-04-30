@@ -145,6 +145,7 @@ export async function updateDay(timesheetId: string, rowId: string, day: number,
     update: { value },
   });
   revalidatePath(`/timesheet/${timesheetId}`);
+  revalidatePath("/timesheet/full");
 }
 
 export async function submitTimesheet(timesheetId: string) {
@@ -201,6 +202,7 @@ export async function updatePaidAmount(timesheetId: string, rowId: string, paidA
 
   await prisma.timesheetRow.update({ where: { id: rowId }, data: { paidAmount } });
   revalidatePath(`/timesheet/${timesheetId}`);
+  revalidatePath("/timesheet/full");
 }
 
 export async function updateNotes(timesheetId: string, rowId: string, notes: string) {
@@ -214,6 +216,7 @@ export async function updateNotes(timesheetId: string, rowId: string, notes: str
 
   await prisma.timesheetRow.update({ where: { id: rowId }, data: { notes: notes.trim() || null } });
   revalidatePath(`/timesheet/${timesheetId}`);
+  revalidatePath("/timesheet/full");
 }
 
 export async function updateShiftRate(timesheetId: string, rowId: string, rate: number) {
@@ -230,6 +233,7 @@ export async function updateShiftRate(timesheetId: string, rowId: string, rate: 
     prisma.employee.update({ where: { id: row.employeeId }, data: { defaultShiftRate: rate } }),
   ]);
   revalidatePath(`/timesheet/${timesheetId}`);
+  revalidatePath("/timesheet/full");
 }
 
 export async function createPosition(name: string) {

@@ -3,7 +3,7 @@
 import React, { useState, useTransition, useMemo } from "react";
 import type { DayValue } from "@/generated/prisma/client";
 import { calcShifts } from "@/lib/payroll";
-import { updateShiftRate } from "../actions";
+import { updateShiftRate, updatePaidAmount, updateNotes, updateDay } from "../actions";
 import {
   Select,
   SelectContent,
@@ -11,8 +11,9 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
-import type { MergedRow } from "./page";
+import type { MergedRow, RowGroup } from "./page";
 
+const DAY_CYCLE: DayValue[] = ["FULL", "HALF", "QUARTER", "THREE_QUARTERS", "SICK", "ABSENT"];
 const DAY_LABEL: Record<DayValue, string> = {
   FULL: "1",
   THREE_QUARTERS: "¾",
@@ -30,18 +31,36 @@ const DAY_STYLE: Record<DayValue, string> = {
   SICK: "bg-amber-100 text-amber-700",
 };
 
-interface DeptGroup {
-  name: string;
-  rows: MergedRow[];
-}
-
 interface Props {
   days: number[];
-  deptGroups: DeptGroup[];
+  deptGroups: RowGroup[];
   showObject: boolean;
+  isAdmin: boolean;
 }
 
-function ShiftRateCell({ timesheetId, rowId, rate }: { timesheetId: string; rowId: string; rate: number }) {
+function DayCell({ timesheetId, rowId, day, value, canEdit }: {
+  timesheetId: string; rowId: string; day: number; value: DayValue; canEdit: boolean;
+}) {
+  const [, startTransition] = useTransition();
+  function cycle() {
+    if (!canEdit) return;
+    const next = DAY_CYCLE[(DAY_CYCLE.indexOf(value) + 1) % DAY_CYCLE.length];
+    startTransition(() => updateDay(timesheetId, rowId, day, next));
+  }
+  return (
+    <td
+      onClick={cycle}
+      title={`День ${day}`}
+      className={`text-center text-xs font-semibold leading-none select-none border-r border-border/30 py-2.5 ${canEdit ? "cursor-pointer hover:ring-1 hover:ring-ring hover:ring-inset" : ""} ${DAY_STYLE[value]}`}
+    >
+      {DAY_LABEL[value]}
+    </td>
+  );
+}
+
+function ShiftRateCell({ timesheetId, rowId, rate, canEdit }: {
+  timesheetId: string; rowId: string; rate: number; canEdit: boolean;
+}) {
   const [editing, setEditing] = useState(false);
   const [val, setVal] = useState(String(rate));
   const [, startTransition] = useTransition();
@@ -56,12 +75,12 @@ function ShiftRateCell({ timesheetId, rowId, rate }: { timesheetId: string; rowI
     setEditing(false);
   }
 
-  if (!editing) {
+  if (!canEdit || !editing) {
     return (
       <td
-        onClick={() => setEditing(true)}
-        className="px-2 py-2 text-right whitespace-nowrap text-muted-foreground cursor-pointer hover:bg-muted/40"
-        title="Нажмите для редактирования"
+        onClick={() => canEdit && setEditing(true)}
+        className={`px-2 py-2 text-right whitespace-nowrap text-muted-foreground ${canEdit ? "cursor-pointer hover:bg-muted/40" : ""}`}
+        title={canEdit ? "Нажмите для редактирования" : undefined}
       >
         {rate.toLocaleString("ru")}
       </td>
@@ -84,50 +103,144 @@ function ShiftRateCell({ timesheetId, rowId, rate }: { timesheetId: string; rowI
   );
 }
 
-export function FullTimesheetGrid({ days, deptGroups, showObject: showObjectProp }: Props) {
+function PaidCell({ timesheetId, rowId, paidAmount, canEdit }: {
+  timesheetId: string; rowId: string; paidAmount: number; canEdit: boolean;
+}) {
+  const [editing, setEditing] = useState(false);
+  const [val, setVal] = useState(String(paidAmount));
+  const [, startTransition] = useTransition();
+
+  function commit() {
+    const n = parseFloat(val);
+    if (!isNaN(n) && n >= 0) {
+      startTransition(() => updatePaidAmount(timesheetId, rowId, n));
+    } else {
+      setVal(String(paidAmount));
+    }
+    setEditing(false);
+  }
+
+  if (!canEdit || !editing) {
+    return (
+      <td
+        onClick={() => canEdit && setEditing(true)}
+        className={`px-2 py-2 text-right whitespace-nowrap text-muted-foreground border-l-2 border-border/40 ${canEdit ? "cursor-pointer hover:bg-muted/40" : ""}`}
+        title={canEdit ? "Нажмите для редактирования" : undefined}
+      >
+        {paidAmount > 0 ? paidAmount.toLocaleString("ru") : <span className="text-zinc-300">—</span>}
+      </td>
+    );
+  }
+
+  return (
+    <td className="px-1 py-0.5 border-l-2 border-border/40">
+      <input
+        autoFocus
+        type="number"
+        min="0"
+        value={val}
+        onChange={(e) => setVal(e.target.value)}
+        onBlur={commit}
+        onKeyDown={(e) => { if (e.key === "Enter") commit(); if (e.key === "Escape") { setVal(String(paidAmount)); setEditing(false); } }}
+        className="w-20 text-right text-xs border border-zinc-300 rounded px-1 py-0.5 focus:outline-none focus:ring-1 focus:ring-zinc-400"
+      />
+    </td>
+  );
+}
+
+function NotesCell({ timesheetId, rowId, notes, canEdit }: {
+  timesheetId: string; rowId: string; notes: string | null; canEdit: boolean;
+}) {
+  const [editing, setEditing] = useState(false);
+  const [val, setVal] = useState(notes ?? "");
+  const [, startTransition] = useTransition();
+
+  function commit() {
+    if (val !== (notes ?? "")) {
+      startTransition(() => updateNotes(timesheetId, rowId, val));
+    }
+    setEditing(false);
+  }
+
+  if (!canEdit || !editing) {
+    return (
+      <td
+        onClick={() => canEdit && setEditing(true)}
+        className={`px-2 py-2 text-left text-xs truncate max-w-[160px] border-l border-border/40 ${canEdit ? "cursor-pointer hover:bg-muted/40" : ""} ${notes ? "text-muted-foreground" : "text-zinc-300"}`}
+        title={notes ?? (canEdit ? "Нажмите для редактирования" : undefined)}
+      >
+        {notes || (canEdit ? <span className="italic text-zinc-300">—</span> : "—")}
+      </td>
+    );
+  }
+
+  return (
+    <td className="px-1 py-0.5 border-l border-border/40">
+      <input
+        autoFocus
+        type="text"
+        value={val}
+        onChange={(e) => setVal(e.target.value)}
+        onBlur={commit}
+        onKeyDown={(e) => { if (e.key === "Enter") commit(); if (e.key === "Escape") { setVal(notes ?? ""); setEditing(false); } }}
+        className="w-36 text-xs border border-zinc-300 rounded px-1 py-0.5 focus:outline-none focus:ring-1 focus:ring-zinc-400"
+      />
+    </td>
+  );
+}
+
+const ru = (a: string, b: string) => a.localeCompare(b, "ru");
+
+export function FullTimesheetGrid({ days, deptGroups, showObject: showObjectProp, isAdmin }: Props) {
   const days1 = days.filter((d) => d <= 15);
   const days2 = days.filter((d) => d > 15);
   const [filterDept, setFilterDept] = useState<string>("all");
-  const [sortMode, setSortMode] = useState<"dept-name" | "name">("dept-name");
+  const [sortMode, setSortMode] = useState<"grouped" | "name">("grouped");
   const [showP1, setShowP1] = useState(true);
   const [showP2, setShowP2] = useState(true);
   const [showPosition, setShowPosition] = useState(true);
   const [showObject, setShowObject] = useState(showObjectProp);
+  const [showForeman, setShowForeman] = useState(true);
 
   const allDeptNames = useMemo(
-    () => [...new Set(deptGroups.map((g) => g.name))].sort((a, b) => a.localeCompare(b, "ru")),
+    () => [...new Set(deptGroups.map((g) => g.deptName))].sort((a, b) => ru(a, b)),
     [deptGroups]
   );
 
   const displayedGroups = useMemo(() => {
-    let groups = filterDept === "all" ? deptGroups : deptGroups.filter((g) => g.name === filterDept);
-    if (sortMode === "name") {
-      const allRows = groups.flatMap((g) => g.rows).sort((a, b) => a.fullName.localeCompare(b.fullName, "ru"));
-      return allRows.length > 0 ? [{ name: "", rows: allRows }] : [];
-    }
-    return [...groups].sort((a, b) => a.name.localeCompare(b.name, "ru")).map((g) => ({
-      ...g,
-      rows: [...g.rows].sort((a, b) => a.fullName.localeCompare(b.fullName, "ru")),
-    }));
-  }, [deptGroups, sortMode, filterDept]);
+    const groups = filterDept === "all"
+      ? deptGroups
+      : deptGroups.filter((g) => g.deptName === filterDept);
 
-  // totals
-  const totals = useMemo(() => {
-    const allRows = displayedGroups.flatMap((g) => g.rows);
-    return {
-      shifts: allRows.reduce((s, r) => s + r.shifts, 0),
-      shifts1: allRows.reduce((s, r) => s + calcShifts(days1.map((d) => ({ value: r.dayMap[d] ?? "ABSENT" as DayValue }))), 0),
-      shifts2: allRows.reduce((s, r) => s + calcShifts(days2.map((d) => ({ value: r.dayMap[d] ?? "ABSENT" as DayValue }))), 0),
-      pay: allRows.reduce((s, r) => s + r.pay, 0),
-      paidAmount: allRows.reduce((s, r) => s + r.paidAmount, 0),
-      remainder: allRows.reduce((s, r) => s + r.remainder, 0),
-    };
-  }, [displayedGroups, days1, days2]);
+    if (sortMode === "name") {
+      const flat = groups.flatMap((g) => g.rows).sort((a, b) => ru(a.fullName, b.fullName));
+      return flat.length > 0
+        ? [{ objectName: "", foremanName: "", deptName: "", rows: flat }]
+        : [];
+    }
+
+    return [...groups]
+      .sort((a, b) => ru(a.objectName, b.objectName) || ru(a.foremanName, b.foremanName) || ru(a.deptName, b.deptName))
+      .map((g) => ({ ...g, rows: [...g.rows].sort((a, b) => ru(a.fullName, b.fullName)) }));
+  }, [deptGroups, filterDept, sortMode]);
+
+  const allRows = useMemo(() => displayedGroups.flatMap((g) => g.rows), [displayedGroups]);
+
+  const totals = useMemo(() => ({
+    shifts: allRows.reduce((s, r) => s + r.shifts, 0),
+    shifts1: allRows.reduce((s, r) => s + calcShifts(days1.map((d) => ({ value: r.dayMap[d] ?? "ABSENT" as DayValue }))), 0),
+    shifts2: allRows.reduce((s, r) => s + calcShifts(days2.map((d) => ({ value: r.dayMap[d] ?? "ABSENT" as DayValue }))), 0),
+    pay: allRows.reduce((s, r) => s + r.pay, 0),
+    paidAmount: allRows.reduce((s, r) => s + r.paidAmount, 0),
+    remainder: allRows.reduce((s, r) => s + r.remainder, 0),
+  }), [allRows, days1, days2]);
 
   const positionCol = showPosition ? 1 : 0;
   const objectCol = showObject ? 1 : 0;
+  const foremanCol = showForeman ? 1 : 0;
   const visibleDayCols = (showP1 ? days1.length : 0) + (showP2 ? days2.length : 0);
-  const totalCols = 1 + positionCol + objectCol + 1 + visibleDayCols + 2 + 1 + 2 + 1 + 1;
+  // ФИО + position? + object? + foreman? + ставка + days1 + sub1 + days2 + sub2 + смен + выплата + выплач + остаток + примечание
+  const totalCols = 1 + positionCol + objectCol + foremanCol + 1 + visibleDayCols + 2 + 1 + 2 + 1 + 1;
 
   if (deptGroups.length === 0 || deptGroups.every((g) => g.rows.length === 0)) {
     return (
@@ -151,10 +264,10 @@ export function FullTimesheetGrid({ days, deptGroups, showObject: showObjectProp
         </Select>
         <button
           type="button"
-          onClick={() => setSortMode((m) => m === "dept-name" ? "name" : "dept-name")}
+          onClick={() => setSortMode((m) => m === "grouped" ? "name" : "grouped")}
           className="text-xs text-muted-foreground hover:text-foreground transition-colors border border-border rounded px-2 py-1"
         >
-          {sortMode === "dept-name" ? "Сортировка: Подразделение → ФИО" : "Сортировка: ФИО (все подряд)"}
+          {sortMode === "grouped" ? "Сортировка: Объект → Бригадир → Подразделение → ФИО" : "Сортировка: ФИО (все подряд)"}
         </button>
         <button
           type="button"
@@ -172,6 +285,13 @@ export function FullTimesheetGrid({ days, deptGroups, showObject: showObjectProp
             {showObject ? "Скрыть объект" : "Показать объект"}
           </button>
         )}
+        <button
+          type="button"
+          onClick={() => setShowForeman((v) => !v)}
+          className="text-xs transition-colors border border-border rounded px-2 py-1 text-muted-foreground hover:text-foreground"
+        >
+          {showForeman ? "Скрыть бригадира" : "Показать бригадира"}
+        </button>
         <button
           type="button"
           onClick={() => setShowP1((v) => !v)}
@@ -194,6 +314,7 @@ export function FullTimesheetGrid({ days, deptGroups, showObject: showObjectProp
             <col style={{ width: 192 }} />
             {showPosition && <col style={{ width: 112 }} />}
             {showObject && <col style={{ width: 128 }} />}
+            {showForeman && <col style={{ width: 128 }} />}
             <col style={{ width: 72 }} />
             {showP1 && days1.map((d) => <col key={d} style={{ width: 26 }} />)}
             <col style={{ width: 44 }} />
@@ -207,101 +328,86 @@ export function FullTimesheetGrid({ days, deptGroups, showObject: showObjectProp
           </colgroup>
           <thead>
             <tr className="bg-muted/60 border-b-2 border-border">
-              <th
-                onClick={() => setSortMode((m) => m === "name" ? "dept-name" : "name")}
-                className="px-2 py-3 text-left text-xs font-semibold text-muted-foreground uppercase tracking-wider truncate cursor-pointer hover:text-foreground transition-colors select-none"
-              >
-                ФИО {sortMode === "name" ? "↑" : ""}
-              </th>
+              <th className="px-2 py-3 text-left text-xs font-semibold text-muted-foreground uppercase tracking-wider truncate">ФИО</th>
               {showPosition && <th className="px-2 py-3 text-left text-xs font-semibold text-muted-foreground uppercase tracking-wider truncate">Должность</th>}
               {showObject && <th className="px-2 py-3 text-left text-xs font-semibold text-muted-foreground uppercase tracking-wider truncate">Объект</th>}
+              {showForeman && <th className="px-2 py-3 text-left text-xs font-semibold text-muted-foreground uppercase tracking-wider truncate">Бригадир</th>}
               <th className="px-2 py-3 text-right text-xs font-semibold text-muted-foreground uppercase tracking-wider truncate">Ставка</th>
               {showP1 && days1.map((d) => (
-                <th key={d} className="text-center text-xs font-semibold text-foreground/70 py-3 border-r border-border/50">
-                  {d}
-                </th>
+                <th key={d} className="text-center text-xs font-semibold text-foreground/70 py-3 border-r border-border/50">{d}</th>
               ))}
               <th className="px-1 py-3 text-center text-xs font-semibold text-blue-500/70 uppercase tracking-wider border-l-2 border-blue-200 whitespace-nowrap">1–15</th>
               {showP2 && days2.map((d) => (
-                <th key={d} className="text-center text-xs font-semibold text-foreground/70 py-3 border-r border-border/50">
-                  {d}
-                </th>
+                <th key={d} className="text-center text-xs font-semibold text-foreground/70 py-3 border-r border-border/50">{d}</th>
               ))}
               <th className="px-1 py-3 text-center text-xs font-semibold text-blue-500/70 uppercase tracking-wider border-l-2 border-blue-200 whitespace-nowrap">16–кон.</th>
               <th className="px-1 py-3 text-center text-xs font-semibold text-muted-foreground uppercase tracking-wider border-l-2 border-border">Смен</th>
               <th className="px-2 py-3 text-right text-xs font-semibold text-muted-foreground uppercase tracking-wider truncate">Выплата</th>
-              <th className="px-2 py-3 text-right text-xs font-semibold text-muted-foreground uppercase tracking-wider truncate border-l-2 border-border">Выплач.</th>
+              <th className="px-2 py-3 text-right text-xs font-semibold text-muted-foreground uppercase tracking-wider truncate border-l-2 border-border/40">Выплач.</th>
               <th className="px-2 py-3 text-right text-xs font-semibold text-muted-foreground uppercase tracking-wider truncate">Остаток</th>
               <th className="px-2 py-3 text-left text-xs font-semibold text-muted-foreground uppercase tracking-wider truncate border-l border-border/40">Примечание</th>
             </tr>
           </thead>
           <tbody>
-            {displayedGroups.map((group) => (
-              <React.Fragment key={`dept-${group.name}`}>
-                {group.name && (
-                  <tr className="bg-muted/40 border-y border-border">
-                    <td colSpan={totalCols} className="px-3 py-2 font-semibold text-foreground/70 text-xs uppercase tracking-widest">
-                      {group.name}
-                    </td>
-                  </tr>
-                )}
-                {group.rows.map((row) => {
-                  const s1 = calcShifts(days1.map((d) => ({ value: row.dayMap[d] ?? "ABSENT" as DayValue })));
-                  const s2 = calcShifts(days2.map((d) => ({ value: row.dayMap[d] ?? "ABSENT" as DayValue })));
-                  return (
-                  <tr key={row.id} className="border-b border-border/40 last:border-b-0 hover:bg-muted/20 transition-colors">
-                    <td className="px-2 py-2.5 font-medium text-foreground whitespace-nowrap" title={row.fullName}>
-                      {row.fullName}
-                    </td>
-                    {showPosition && <td className="px-2 py-2.5 truncate text-muted-foreground" title={row.positionSnapshot}>{row.positionSnapshot}</td>}
-                    {showObject && <td className="px-2 py-2.5 truncate text-muted-foreground" title={row.objectName}>{row.objectName}</td>}
-                    <ShiftRateCell timesheetId={row.timesheetId} rowId={row.id} rate={row.shiftRateSnapshot} />
-                    {showP1 && days1.map((d) => {
-                      const val: DayValue = row.dayMap[d] ?? "ABSENT";
-                      return (
-                        <td key={d} title={`День ${d}`} className={`text-center text-xs font-semibold leading-none select-none border-r border-border/30 py-2.5 ${DAY_STYLE[val]}`}>
-                          {DAY_LABEL[val]}
+            {displayedGroups.map((group) => {
+              const groupKey = `${group.objectName}\0${group.foremanName}\0${group.deptName}`;
+              const headerParts = [group.objectName, group.foremanName, group.deptName].filter(Boolean);
+              return (
+                <React.Fragment key={groupKey}>
+                  {group.deptName && (
+                    <tr className="bg-muted/40 border-y border-border">
+                      <td colSpan={totalCols} className="px-3 py-2 text-xs uppercase tracking-widest">
+                        <span className="font-semibold text-foreground/80">{group.objectName}</span>
+                        <span className="text-muted-foreground mx-1.5">·</span>
+                        <span className="text-foreground/70">{group.foremanName}</span>
+                        <span className="text-muted-foreground mx-1.5">·</span>
+                        <span className="text-muted-foreground">{group.deptName}</span>
+                      </td>
+                    </tr>
+                  )}
+                  {group.rows.map((row) => {
+                    const s1 = calcShifts(days1.map((d) => ({ value: row.dayMap[d] ?? "ABSENT" as DayValue })));
+                    const s2 = calcShifts(days2.map((d) => ({ value: row.dayMap[d] ?? "ABSENT" as DayValue })));
+                    return (
+                      <tr key={row.id} className="border-b border-border/40 last:border-b-0 hover:bg-muted/20 transition-colors">
+                        <td className="px-2 py-2.5 font-medium text-foreground whitespace-nowrap" title={row.fullName}>{row.fullName}</td>
+                        {showPosition && <td className="px-2 py-2.5 truncate text-muted-foreground" title={row.positionSnapshot}>{row.positionSnapshot}</td>}
+                        {showObject && <td className="px-2 py-2.5 truncate text-muted-foreground" title={row.objectName}>{row.objectName}</td>}
+                        {showForeman && <td className="px-2 py-2.5 truncate text-muted-foreground" title={row.foremanName ?? undefined}>{row.foremanName ?? <span className="text-zinc-300">—</span>}</td>}
+                        <ShiftRateCell timesheetId={row.timesheetId} rowId={row.id} rate={row.shiftRateSnapshot} canEdit={isAdmin} />
+                        {showP1 && days1.map((d) => (
+                          <DayCell key={d} timesheetId={row.timesheetId} rowId={row.id} day={d} value={row.dayMap[d] ?? "ABSENT"} canEdit={isAdmin} />
+                        ))}
+                        <td className="px-1 py-2.5 text-center font-medium text-blue-600 border-l-2 border-blue-200">
+                          {s1 % 1 === 0 ? s1 : s1.toFixed(2)}
                         </td>
-                      );
-                    })}
-                    <td className="px-1 py-2.5 text-center font-medium text-blue-600 border-l-2 border-blue-200">
-                      {s1 % 1 === 0 ? s1 : s1.toFixed(2)}
-                    </td>
-                    {showP2 && days2.map((d) => {
-                      const val: DayValue = row.dayMap[d] ?? "ABSENT";
-                      return (
-                        <td key={d} title={`День ${d}`} className={`text-center text-xs font-semibold leading-none select-none border-r border-border/30 py-2.5 ${DAY_STYLE[val]}`}>
-                          {DAY_LABEL[val]}
+                        {showP2 && days2.map((d) => (
+                          <DayCell key={d} timesheetId={row.timesheetId} rowId={row.id} day={d} value={row.dayMap[d] ?? "ABSENT"} canEdit={isAdmin} />
+                        ))}
+                        <td className="px-1 py-2.5 text-center font-medium text-blue-600 border-l-2 border-blue-200">
+                          {s2 % 1 === 0 ? s2 : s2.toFixed(2)}
                         </td>
-                      );
-                    })}
-                    <td className="px-1 py-2.5 text-center font-medium text-blue-600 border-l-2 border-blue-200">
-                      {s2 % 1 === 0 ? s2 : s2.toFixed(2)}
-                    </td>
-                    <td className="px-1 py-2.5 text-center font-medium text-foreground border-l-2 border-border/40">
-                      {row.shifts % 1 === 0 ? row.shifts : row.shifts.toFixed(2)}
-                    </td>
-                    <td className="px-2 py-2.5 text-right font-semibold text-foreground truncate">
-                      {row.pay.toLocaleString("ru")}
-                    </td>
-                    <td className="px-2 py-2.5 text-right text-muted-foreground border-l-2 border-border/40">
-                      {row.paidAmount > 0 ? row.paidAmount.toLocaleString("ru") : <span className="text-zinc-300">—</span>}
-                    </td>
-                    <td className={`px-2 py-2.5 text-right font-semibold truncate ${row.remainder < 0 ? "text-destructive" : "text-foreground"}`}>
-                      {row.remainder.toLocaleString("ru")}
-                    </td>
-                    <td className="px-2 py-2.5 text-left text-xs truncate text-muted-foreground max-w-[160px]" title={row.notes ?? undefined}>
-                      {row.notes || <span className="text-zinc-300">—</span>}
-                    </td>
-                  </tr>
-                  );
-                })}
-              </React.Fragment>
-            ))}
+                        <td className="px-1 py-2.5 text-center font-medium text-foreground border-l-2 border-border/40">
+                          {row.shifts % 1 === 0 ? row.shifts : row.shifts.toFixed(2)}
+                        </td>
+                        <td className="px-2 py-2.5 text-right font-semibold text-foreground truncate">
+                          {row.pay.toLocaleString("ru")}
+                        </td>
+                        <PaidCell timesheetId={row.timesheetId} rowId={row.id} paidAmount={row.paidAmount} canEdit={isAdmin} />
+                        <td className={`px-2 py-2.5 text-right font-semibold truncate ${row.remainder < 0 ? "text-destructive" : "text-foreground"}`}>
+                          {row.remainder.toLocaleString("ru")}
+                        </td>
+                        <NotesCell timesheetId={row.timesheetId} rowId={row.id} notes={row.notes} canEdit={isAdmin} />
+                      </tr>
+                    );
+                  })}
+                </React.Fragment>
+              );
+            })}
           </tbody>
           <tfoot>
             <tr className="border-t-2 border-border bg-muted/50 font-semibold">
-              <td colSpan={1 + positionCol + objectCol + 1} className="px-2 py-2.5 text-xs text-muted-foreground uppercase tracking-wider">
+              <td colSpan={1 + positionCol + objectCol + foremanCol + 1} className="px-2 py-2.5 text-xs text-muted-foreground uppercase tracking-wider">
                 Итого
               </td>
               {showP1 && days1.map((d) => <td key={d} />)}

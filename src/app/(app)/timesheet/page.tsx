@@ -21,7 +21,7 @@ export default async function TimesheetListPage() {
 
   const timesheets = await prisma.timesheet.findMany({
     where: isAdmin ? {} : { createdByUserId: session!.user.id },
-    include: { object: true },
+    include: { object: true, createdBy: true },
     orderBy: [{ year: "desc" }, { month: "desc" }],
   });
 
@@ -59,6 +59,7 @@ export default async function TimesheetListPage() {
           <thead>
             <tr className="border-b border-border bg-muted/40">
               {isAdmin && <th className="px-4 py-2.5 text-left text-xs font-medium text-muted-foreground uppercase tracking-wide">Объект</th>}
+              {isAdmin && <th className="px-4 py-2.5 text-left text-xs font-medium text-muted-foreground uppercase tracking-wide">Бригадир</th>}
               <th className="px-4 py-2.5 text-left text-xs font-medium text-muted-foreground uppercase tracking-wide">Период</th>
               <th className="px-4 py-2.5 text-left text-xs font-medium text-muted-foreground uppercase tracking-wide">Статус</th>
               <th className="px-4 py-2.5" />
@@ -67,7 +68,7 @@ export default async function TimesheetListPage() {
           <tbody>
             {timesheets.length === 0 && (
               <tr>
-                <td colSpan={isAdmin ? 4 : 3} className="px-4 py-12 text-center text-sm text-muted-foreground">
+                <td colSpan={isAdmin ? 5 : 3} className="px-4 py-12 text-center text-sm text-muted-foreground">
                   Нет табелей. Создайте первый.
                 </td>
               </tr>
@@ -75,6 +76,7 @@ export default async function TimesheetListPage() {
             {timesheets.map((t) => (
               <tr key={t.id} className="border-b border-border/60 last:border-0 hover:bg-muted/30 transition-colors group">
                 {isAdmin && <td className="px-4 py-3 font-medium text-foreground">{t.object.name}</td>}
+                {isAdmin && <td className="px-4 py-3 text-muted-foreground">{t.createdBy.fullName}</td>}
                 <td className="px-4 py-3 text-foreground">
                   {MONTHS[t.month - 1]} {t.year}
                 </td>

@@ -2,6 +2,7 @@ import { auth, signOut } from "@/auth";
 import { redirect } from "next/navigation";
 import { NavLink } from "@/components/nav-link";
 import { canViewAllBrigades } from "@/lib/rbac";
+import { ThemeToggle } from "@/components/theme-toggle";
 
 export default async function AppLayout({ children }: { children: React.ReactNode }) {
   const session = await auth();
@@ -16,9 +17,8 @@ export default async function AppLayout({ children }: { children: React.ReactNod
       <header className="sticky top-0 z-30 border-b border-border bg-card/80 backdrop-blur-sm">
         <div className="mx-auto flex max-w-7xl items-center justify-between px-5 h-14">
           <div className="flex items-center gap-7">
-            <span className="text-[15px] font-semibold tracking-tight text-foreground">Табель</span>
+            <a href="/timesheet" className="text-[15px] font-semibold tracking-tight text-foreground hover:text-primary transition-colors">Табель</a>
             <nav className="flex items-center gap-0.5">
-              <NavLink href="/timesheet">Табели</NavLink>
               {isAdmin && <NavLink href="/admin">Меню</NavLink>}
             </nav>
           </div>
@@ -28,6 +28,7 @@ export default async function AppLayout({ children }: { children: React.ReactNod
               <span className="mx-1.5 text-border">·</span>
               {roleLabel}
             </span>
+            <ThemeToggle />
             <form
               action={async () => {
                 "use server";

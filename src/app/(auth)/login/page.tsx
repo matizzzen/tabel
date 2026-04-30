@@ -2,12 +2,16 @@
 
 import { useActionState } from "react";
 import { loginAction } from "./actions";
+import { ThemeToggle } from "@/components/theme-toggle";
 
 export default function LoginPage() {
   const [error, action, pending] = useActionState(loginAction, null);
 
   return (
-    <div className="min-h-screen flex items-center justify-center bg-background">
+    <div className="min-h-screen flex items-center justify-center bg-background relative">
+      <div className="absolute top-4 right-4">
+        <ThemeToggle />
+      </div>
       <div className="w-full max-w-[360px] flex flex-col gap-8">
         {/* Logo area */}
         <div className="text-center">

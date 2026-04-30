@@ -5,7 +5,6 @@ generator client {
 
 datasource db {
   provider = "postgresql"
-  url      = env("DATABASE_URL")
 }
 
 enum Role {
@@ -157,4 +156,15 @@ model TimesheetDay {
   value           DayValue
 
   @@unique([timesheetRowId, day])
+}
+
+model Backup {
+  id          String   @id @default(cuid())
+  createdAt   DateTime @default(now())
+  label       String?
+  filename    String   @unique
+  sizeBytes   Int
+  isAutomatic Boolean  @default(false)
+
+  @@map("backups")
 }

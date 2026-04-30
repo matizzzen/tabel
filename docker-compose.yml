@@ -24,9 +24,39 @@ services:
     env_file: .env
     ports:
       - "3000:3000"
+    volumes:
+      - tabel-backups:/data/backups
     depends_on:
       db:
         condition: service_healthy
 
+  backup-cron:
+    image: alpine:3.19
+    container_name: tabel-backup-cron
+    restart: unless-stopped
+    env_file: .env
+    entrypoint: >
+      /bin/sh -c "
+        printf '0 2 * * *\twget -q -O /dev/null --header=\"Authorization: Bearer %s\" http://app:3000/api/cron/backup\n' \"$$CRON_SECRET\" | crontab - &&
+        crond -f -l 2
+      "
+    depends_on:
+      - app
+
+  watchtower:
+    image: containrrr/watchtower
+    container_name: tabel-watchtower
+    restart: unless-stopped
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock
+      - /root/.docker/config.json:/config.json:ro
+    environment:
+      WATCHTOWER_POLL_INTERVAL: 300
+      WATCHTOWER_CLEANUP: "true"
+      WATCHTOWER_INCLUDE_STOPPED: "false"
+      WATCHTOWER_SCOPE: tabel
+    command: tabel-app
+
 volumes:
   tabel-db-data:
+  tabel-backups:

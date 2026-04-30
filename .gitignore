@@ -55,5 +55,6 @@ next-env.d.ts
 
 # project
 PROGRESS.md
+/backups/
 
 /src/generated/prisma
