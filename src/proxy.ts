@@ -9,7 +9,7 @@ export const proxy = auth((req) => {
   }
 
   if (req.nextUrl.pathname.startsWith("/admin") && user.role === "FOREMAN") {
-    return NextResponse.redirect(new URL("/dashboard", req.url));
+    return NextResponse.redirect(new URL("/timesheet", req.url));
   }
 
   return NextResponse.next();

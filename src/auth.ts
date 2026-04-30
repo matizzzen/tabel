@@ -1,13 +1,8 @@
 import NextAuth from "next-auth";
 import Credentials from "next-auth/providers/credentials";
 import bcrypt from "bcryptjs";
-import { PrismaPg } from "@prisma/adapter-pg";
-import { PrismaClient } from "@/generated/prisma/client";
+import { prisma } from "@/lib/db";
 import type { Role } from "@/generated/prisma/client";
-
-const prisma = new PrismaClient({
-  adapter: new PrismaPg({ connectionString: process.env.DATABASE_URL }),
-});
 
 export const { handlers, auth, signIn, signOut } = NextAuth({
   providers: [

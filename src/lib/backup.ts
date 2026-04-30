@@ -3,7 +3,9 @@ import path from "path";
 import { prisma as db } from "@/lib/db";
 import type { DayValue, TimesheetStatus } from "@/generated/prisma/client";
 
-const BACKUP_DIR = process.env.BACKUP_DIR ?? path.join(process.cwd(), "backups");
+function getBackupDir() {
+  return process.env.BACKUP_DIR ?? "backups";
+}
 
 type BackupForeman = { id: string; name: string; timesheetCount: number };
 
@@ -40,7 +42,7 @@ export type BackupData = {
 };
 
 async function ensureBackupDir() {
-  await fs.mkdir(BACKUP_DIR, { recursive: true });
+  await fs.mkdir(getBackupDir(), { recursive: true });
 }
 
 export async function createBackup(isAutomatic = false, label?: string) {
@@ -86,7 +88,7 @@ export async function createBackup(isAutomatic = false, label?: string) {
 
   const json = JSON.stringify(data);
   const filename = `backup_${new Date().toISOString().replace(/[:.]/g, "-")}.json`;
-  const filepath = path.join(BACKUP_DIR, filename);
+  const filepath = path.join(getBackupDir(), filename);
   await fs.writeFile(filepath, json, "utf-8");
 
   return db.backup.create({
@@ -100,7 +102,7 @@ export async function createBackup(isAutomatic = false, label?: string) {
 }
 
 async function readBackupData(filename: string): Promise<BackupData> {
-  const filepath = path.join(BACKUP_DIR, filename);
+  const filepath = path.join(getBackupDir(), filename);
   const json = await fs.readFile(filepath, "utf-8");
   return JSON.parse(json) as BackupData;
 }
@@ -200,7 +202,7 @@ export async function restoreByForeman(backupId: string, foremanId: string) {
 export async function deleteBackup(id: string) {
   const record = await db.backup.findUniqueOrThrow({ where: { id } });
   try {
-    await fs.unlink(path.join(BACKUP_DIR, record.filename));
+    await fs.unlink(path.join(getBackupDir(), record.filename));
   } catch {
     // file may already be gone
   }

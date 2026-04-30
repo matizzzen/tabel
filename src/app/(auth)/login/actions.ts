@@ -11,7 +11,7 @@ export async function loginAction(
     await signIn("credentials", {
       login: formData.get("login"),
       password: formData.get("password"),
-      redirectTo: "/dashboard",
+      redirectTo: "/timesheet",
     });
     return null;
   } catch (err) {
