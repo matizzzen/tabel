@@ -6,202 +6,196 @@ import { PrismaClient, type DayValue } from "../src/generated/prisma/client";
 const adapter = new PrismaPg({ connectionString: process.env.DATABASE_URL });
 const prisma = new PrismaClient({ adapter });
 
+const YEAR = new Date().getFullYear();
+const MONTH = new Date().getMonth() + 1;
+const DAYS_IN_MONTH = new Date(YEAR, MONTH, 0).getDate();
+
+function dayPattern(day: number): DayValue {
+  const date = new Date(YEAR, MONTH - 1, day);
+  const dow = date.getDay();
+  if (dow === 0 || dow === 6) return "ABSENT";
+  const r = Math.random();
+  if (r < 0.05) return "SICK";
+  if (r < 0.10) return "HALF";
+  if (r < 0.15) return "THREE_QUARTERS";
+  return "FULL";
+}
+
 async function main() {
-  const passwordHash = await bcrypt.hash("password", 10);
+  const hash = await bcrypt.hash("password", 10);
 
-  const objectNames = ["ЖК Северный", "ТЦ Радуга", "Склад №3"];
-  const [objA, objB] = await Promise.all(
-    objectNames.map((name) =>
-      prisma.object.upsert({ where: { name }, update: {}, create: { name } })
-    )
-  );
+  const [objA, objB] = await Promise.all([
+    prisma.object.upsert({ where: { name: "ЖК Северный" }, update: {}, create: { name: "ЖК Северный" } }),
+    prisma.object.upsert({ where: { name: "ТЦ Радуга" },   update: {}, create: { name: "ТЦ Радуга" } }),
+  ]);
 
-  const [admin, , brigadir1, brigadir2] = await Promise.all([
+  const [director, b1, b2, b3, b4] = await Promise.all([
     prisma.user.upsert({
-      where: { login: "admin" },
-      update: {},
-      create: { login: "admin", passwordHash, fullName: "Администратор", role: "ADMIN" },
+      where: { login: "director" }, update: {},
+      create: { login: "director", passwordHash: hash, fullName: "Директор Главный", role: "DIRECTOR" },
     }),
     prisma.user.upsert({
-      where: { login: "director" },
-      update: {},
-      create: { login: "director", passwordHash, fullName: "Директор", role: "DIRECTOR" },
+      where: { login: "brigadir1" }, update: {},
+      create: { login: "brigadir1", passwordHash: hash, fullName: "Иванов Иван Иванович", role: "FOREMAN", objectId: objA.id },
     }),
     prisma.user.upsert({
-      where: { login: "brigadir1" },
-      update: {},
-      create: {
-        login: "brigadir1",
-        passwordHash,
-        fullName: "Иванов Иван Иванович",
-        role: "FOREMAN",
-        objectId: objA.id,
-      },
+      where: { login: "brigadir2" }, update: {},
+      create: { login: "brigadir2", passwordHash: hash, fullName: "Петров Пётр Петрович", role: "FOREMAN", objectId: objA.id },
     }),
     prisma.user.upsert({
-      where: { login: "brigadir2" },
-      update: {},
-      create: {
-        login: "brigadir2",
-        passwordHash,
-        fullName: "Петров Пётр Петрович",
-        role: "FOREMAN",
-        objectId: objB.id,
-      },
+      where: { login: "brigadir3" }, update: {},
+      create: { login: "brigadir3", passwordHash: hash, fullName: "Сидоров Сидор Сидорович", role: "FOREMAN", objectId: objA.id },
+    }),
+    prisma.user.upsert({
+      where: { login: "brigadir4" }, update: {},
+      create: { login: "brigadir4", passwordHash: hash, fullName: "Козлов Андрей Викторович", role: "FOREMAN", objectId: objB.id },
     }),
   ]);
 
-  void admin;
+  void director;
 
-  const positionNames = ["Каменщик", "Бетонщик", "Электрик", "Сварщик", "Разнорабочий"];
+  const positionNames = ["Каменщик", "Бетонщик", "Электрик", "Сварщик", "Разнорабочий", "Штукатур", "Плотник"];
   const deptNames = ["СМУ-1", "СМУ-2", "Электромонтажный участок"];
 
-  async function createPositionsFor(userId: string) {
-    return Promise.all(
+  async function setupForeman(userId: string) {
+    const positions = await Promise.all(
       positionNames.map((name) =>
-        prisma.position.upsert({
-          where: { name_userId: { name, userId } },
-          update: {},
-          create: { name, userId },
-        })
+        prisma.position.upsert({ where: { name_userId: { name, userId } }, update: {}, create: { name, userId } })
       )
     );
-  }
-
-  async function createDepartmentsFor(userId: string) {
-    return Promise.all(
+    const depts = await Promise.all(
       deptNames.map((name) =>
-        prisma.department.upsert({
-          where: { name_userId: { name, userId } },
-          update: {},
-          create: { name, userId },
-        })
+        prisma.department.upsert({ where: { name_userId: { name, userId } }, update: {}, create: { name, userId } })
       )
     );
+    return { positions, depts };
   }
 
-  const [posB1, posB2] = await Promise.all([
-    createPositionsFor(brigadir1.id),
-    createPositionsFor(brigadir2.id),
+  const [f1, f2, f3, f4] = await Promise.all([
+    setupForeman(b1.id),
+    setupForeman(b2.id),
+    setupForeman(b3.id),
+    setupForeman(b4.id),
   ]);
 
-  const [deptsB1, deptsB2] = await Promise.all([
-    createDepartmentsFor(brigadir1.id),
-    createDepartmentsFor(brigadir2.id),
-  ]);
+  type EmpDef = { fullName: string; pi: number; di: number; rate: number };
 
-  // employees 0-4 → brigadir1, 5-9 → brigadir2
-  const employeesDataB1 = [
-    { fullName: "Сидоров Алексей Николаевич",  positionIdx: 0, deptIdx: 0, rate: 2800 },
-    { fullName: "Кузнецов Михаил Сергеевич",    positionIdx: 0, deptIdx: 0, rate: 2800 },
-    { fullName: "Васильев Дмитрий Олегович",    positionIdx: 1, deptIdx: 0, rate: 2600 },
-    { fullName: "Новиков Андрей Викторович",    positionIdx: 1, deptIdx: 1, rate: 2600 },
-    { fullName: "Морозов Сергей Александрович", positionIdx: 2, deptIdx: 2, rate: 3200 },
-  ];
+  const empDefs: Record<string, EmpDef[]> = {
+    b1: [
+      { fullName: "Алексеев Алексей Алексеевич",   pi: 0, di: 0, rate: 2800 },
+      { fullName: "Борисов Борис Борисович",        pi: 0, di: 0, rate: 2800 },
+      { fullName: "Викторов Виктор Викторович",     pi: 1, di: 0, rate: 2600 },
+      { fullName: "Григорьев Григорий Григорьевич", pi: 1, di: 1, rate: 2600 },
+      { fullName: "Дмитриев Дмитрий Дмитриевич",   pi: 2, di: 2, rate: 3200 },
+      { fullName: "Евгеньев Евгений Евгеньевич",    pi: 5, di: 0, rate: 2400 },
+    ],
+    b2: [
+      { fullName: "Жуков Жан Жанович",              pi: 3, di: 1, rate: 3000 },
+      { fullName: "Зимин Захар Захарович",           pi: 3, di: 1, rate: 3000 },
+      { fullName: "Игнатьев Игорь Игоревич",         pi: 4, di: 0, rate: 2200 },
+      { fullName: "Кириллов Кирилл Кириллович",      pi: 4, di: 1, rate: 2200 },
+      { fullName: "Лаврентьев Лавр Лаврентьевич",   pi: 6, di: 0, rate: 2500 },
+      { fullName: "Макаров Макар Макарович",         pi: 0, di: 2, rate: 2800 },
+    ],
+    b3: [
+      { fullName: "Никитин Никита Никитич",          pi: 1, di: 0, rate: 2600 },
+      { fullName: "Олегов Олег Олегович",            pi: 2, di: 2, rate: 3200 },
+      { fullName: "Павлов Павел Павлович",           pi: 5, di: 1, rate: 2400 },
+      { fullName: "Романов Роман Романович",         pi: 6, di: 0, rate: 2500 },
+      { fullName: "Степанов Степан Степанович",      pi: 3, di: 1, rate: 3000 },
+      { fullName: "Тимофеев Тимофей Тимофеевич",    pi: 4, di: 0, rate: 2200 },
+    ],
+    b4: [
+      { fullName: "Ульянов Ульян Ульянович",         pi: 0, di: 0, rate: 2800 },
+      { fullName: "Фёдоров Фёдор Фёдорович",         pi: 1, di: 1, rate: 2600 },
+      { fullName: "Харитонов Харитон Харитонович",   pi: 2, di: 2, rate: 3200 },
+      { fullName: "Цветков Цветан Цветанович",       pi: 3, di: 0, rate: 3000 },
+      { fullName: "Шустов Шустрый Шустрович",       pi: 4, di: 1, rate: 2200 },
+      { fullName: "Щербаков Щедрый Щедрович",       pi: 6, di: 0, rate: 2500 },
+    ],
+  };
 
-  const employeesDataB2 = [
-    { fullName: "Волков Игорь Павлович",        positionIdx: 2, deptIdx: 2, rate: 3200 },
-    { fullName: "Соловьёв Артём Юрьевич",       positionIdx: 3, deptIdx: 1, rate: 3000 },
-    { fullName: "Зайцев Николай Владимирович",  positionIdx: 3, deptIdx: 1, rate: 3000 },
-    { fullName: "Орлов Павел Геннадьевич",      positionIdx: 4, deptIdx: 0, rate: 2200 },
-    { fullName: "Лебедев Виктор Анатольевич",   positionIdx: 4, deptIdx: 1, rate: 2200 },
-  ];
-
-  async function createEmployeesFor(
-    data: { fullName: string; positionIdx: number; deptIdx: number; rate: number }[],
+  async function createEmployees(
+    data: EmpDef[],
     foremanId: string,
-    positions: typeof posB1,
-    departments: typeof deptsB1
+    setup: { positions: { id: string }[]; depts: { id: string }[] }
   ) {
     const results = [];
     for (const e of data) {
       const existing = await prisma.employee.findFirst({ where: { fullName: e.fullName, foremanId } });
       if (existing) { results.push(existing); continue; }
-      results.push(
-        await prisma.employee.create({
-          data: {
-            fullName: e.fullName,
-            positionId: positions[e.positionIdx].id,
-            departmentId: departments[e.deptIdx].id,
-            defaultShiftRate: e.rate,
-            foremanId,
-          },
-        })
-      );
+      results.push(await prisma.employee.create({
+        data: {
+          fullName: e.fullName,
+          positionId: setup.positions[e.pi].id,
+          departmentId: setup.depts[e.di].id,
+          defaultShiftRate: e.rate,
+          foremanId,
+        },
+      }));
     }
     return results;
   }
 
-  const [empB1, empB2] = await Promise.all([
-    createEmployeesFor(employeesDataB1, brigadir1.id, posB1, deptsB1),
-    createEmployeesFor(employeesDataB2, brigadir2.id, posB2, deptsB2),
+  const [emps1, emps2, emps3, emps4] = await Promise.all([
+    createEmployees(empDefs.b1, b1.id, f1),
+    createEmployees(empDefs.b2, b2.id, f2),
+    createEmployees(empDefs.b3, b3.id, f3),
+    createEmployees(empDefs.b4, b4.id, f4),
   ]);
 
-  const year = 2026;
-  const month = 4;
-
-  const tsA = await prisma.timesheet.upsert({
-    where: { objectId_createdByUserId_year_month: { objectId: objA.id, createdByUserId: brigadir1.id, year, month } },
-    update: {},
-    create: { objectId: objA.id, year, month, createdByUserId: brigadir1.id },
-  });
-
-  const tsB = await prisma.timesheet.upsert({
-    where: { objectId_createdByUserId_year_month: { objectId: objB.id, createdByUserId: brigadir2.id, year, month } },
-    update: {},
-    create: { objectId: objB.id, year, month, createdByUserId: brigadir2.id },
-  });
-
-  async function fillRows(
-    timesheetId: string,
-    objectId: string,
-    emps: { id: string }[],
-    dayPattern: DayValue[]
+  async function fillTimesheet(
+    foreman: { id: string },
+    object: { id: string },
+    employees: { id: string }[],
+    setup: { positions: { id: string; name: string }[]; depts: { id: string; name: string }[] },
+    data: EmpDef[]
   ) {
-    for (const emp of emps) {
-      const full = await prisma.employee.findUniqueOrThrow({
-        where: { id: emp.id },
-        include: { position: true, department: true },
-      });
+    const ts = await prisma.timesheet.upsert({
+      where: { objectId_createdByUserId_year_month: { objectId: object.id, createdByUserId: foreman.id, year: YEAR, month: MONTH } },
+      update: {},
+      create: { objectId: object.id, year: YEAR, month: MONTH, createdByUserId: foreman.id },
+    });
+    for (let i = 0; i < employees.length; i++) {
+      const emp = employees[i];
+      const def = data[i];
       const existing = await prisma.timesheetRow.findUnique({
-        where: { timesheetId_employeeId: { timesheetId, employeeId: emp.id } },
+        where: { timesheetId_employeeId: { timesheetId: ts.id, employeeId: emp.id } },
       });
-      const row =
-        existing ??
-        (await prisma.timesheetRow.create({
-          data: {
-            timesheetId,
-            employeeId: emp.id,
-            positionSnapshot: full.position.name,
-            departmentSnapshot: full.department.name,
-            shiftRateSnapshot: full.defaultShiftRate,
-            objectId,
-          },
-        }));
-      for (let d = 1; d <= 15; d++) {
-        const value = dayPattern[(d - 1) % dayPattern.length];
+      const row = existing ?? await prisma.timesheetRow.create({
+        data: {
+          timesheetId: ts.id,
+          employeeId: emp.id,
+          positionSnapshot: setup.positions[def.pi].name,
+          departmentSnapshot: setup.depts[def.di].name,
+          shiftRateSnapshot: def.rate,
+          objectId: object.id,
+        },
+      });
+      for (let d = 1; d <= DAYS_IN_MONTH; d++) {
         await prisma.timesheetDay.upsert({
           where: { timesheetRowId_day: { timesheetRowId: row.id, day: d } },
-          create: { timesheetRowId: row.id, day: d, value },
-          update: { value },
+          create: { timesheetRowId: row.id, day: d, value: dayPattern(d) },
+          update: {},
         });
       }
     }
   }
 
-  await fillRows(tsA.id, objA.id, empB1, ["FULL", "FULL", "ABSENT", "FULL", "FULL", "FULL", "ABSENT"]);
-  await fillRows(tsB.id, objB.id, empB2, ["FULL", "HALF", "FULL", "FULL", "ABSENT", "FULL", "FULL"]);
+  await fillTimesheet(b1, objA, emps1, f1, empDefs.b1);
+  await fillTimesheet(b2, objA, emps2, f2, empDefs.b2);
+  await fillTimesheet(b3, objA, emps3, f3, empDefs.b3);
+  await fillTimesheet(b4, objB, emps4, f4, empDefs.b4);
 
-  const counts = {
+  console.log("Seed complete:", {
     users: await prisma.user.count(),
-    positions: await prisma.position.count(),
     objects: await prisma.object.count(),
-    departments: await prisma.department.count(),
     employees: await prisma.employee.count(),
     timesheets: await prisma.timesheet.count(),
-    timesheetRows: await prisma.timesheetRow.count(),
-  };
-  console.log("Seed complete:", counts);
+    days: await prisma.timesheetDay.count(),
+  });
+  console.log("\nLogins (password: password):");
+  console.log("  director / brigadir1 / brigadir2 / brigadir3 / brigadir4");
 }
 
 main()
