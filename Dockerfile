@@ -3,6 +3,9 @@ WORKDIR /app
 RUN corepack enable && corepack prepare pnpm@latest --activate
 COPY package.json pnpm-lock.yaml pnpm-workspace.yaml ./
 RUN pnpm install --frozen-lockfile
+# Dereference pnpm symlinks so prisma packages can be copied standalone
+RUN cp -rL node_modules/prisma /tmp/prisma-pkg \
+ && cp -rL node_modules/@prisma /tmp/at-prisma-pkg
 
 FROM node:22-alpine AS builder
 WORKDIR /app
@@ -23,9 +26,8 @@ COPY --from=builder --chown=nextjs:nodejs /app/.next/static ./.next/static
 COPY --from=builder --chown=nextjs:nodejs /app/public ./public
 COPY --from=builder --chown=nextjs:nodejs /app/prisma ./prisma
 COPY --from=builder --chown=nextjs:nodejs /app/prisma.config.ts ./prisma.config.ts
-COPY --from=deps    --chown=nextjs:nodejs /app/node_modules/.bin/prisma ./node_modules/.bin/prisma
-COPY --from=deps    --chown=nextjs:nodejs /app/node_modules/prisma      ./node_modules/prisma
-COPY --from=deps    --chown=nextjs:nodejs /app/node_modules/@prisma     ./node_modules/@prisma
+COPY --from=deps    --chown=nextjs:nodejs /tmp/prisma-pkg               ./node_modules/prisma
+COPY --from=deps    --chown=nextjs:nodejs /tmp/at-prisma-pkg            ./node_modules/@prisma
 COPY --chown=nextjs:nodejs docker-entrypoint.sh /app/docker-entrypoint.sh
 RUN chmod +x /app/docker-entrypoint.sh
 USER nextjs
