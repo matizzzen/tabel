@@ -4,6 +4,13 @@ RUN corepack enable && corepack prepare pnpm@latest --activate
 COPY package.json pnpm-lock.yaml pnpm-workspace.yaml .npmrc ./
 RUN pnpm install --frozen-lockfile
 
+# Install prisma CLI via npm for flat node_modules (no pnpm symlink issues)
+FROM node:22-alpine AS prisma-cli
+WORKDIR /prisma
+COPY package.json ./
+RUN PRISMA_VERSION=$(node -p "require('./package.json').devDependencies.prisma.replace(/[\^~]/, '')") \
+ && npm install --no-save "prisma@${PRISMA_VERSION}"
+
 FROM node:22-alpine AS builder
 WORKDIR /app
 RUN corepack enable && corepack prepare pnpm@latest --activate
@@ -23,10 +30,7 @@ COPY --from=builder --chown=nextjs:nodejs /app/.next/static ./.next/static
 COPY --from=builder --chown=nextjs:nodejs /app/public ./public
 COPY --from=builder --chown=nextjs:nodejs /app/prisma ./prisma
 COPY --from=builder --chown=nextjs:nodejs /app/prisma.config.ts ./prisma.config.ts
-COPY --from=deps    --chown=nextjs:nodejs /app/node_modules/.bin/prisma                          ./node_modules/.bin/prisma
-COPY --from=deps    --chown=nextjs:nodejs /app/node_modules/prisma/build/prisma_schema_build_bg.wasm ./node_modules/.bin/prisma_schema_build_bg.wasm
-COPY --from=deps    --chown=nextjs:nodejs /app/node_modules/prisma      ./node_modules/prisma
-COPY --from=deps    --chown=nextjs:nodejs /app/node_modules/@prisma     ./node_modules/@prisma
+COPY --from=prisma-cli --chown=nextjs:nodejs /prisma/node_modules ./node_modules
 COPY --chown=nextjs:nodejs docker-entrypoint.sh /app/docker-entrypoint.sh
 RUN chmod +x /app/docker-entrypoint.sh
 USER nextjs
