@@ -2,7 +2,6 @@ import { auth } from "@/auth";
 import { prisma } from "@/lib/db";
 import { canViewAllBrigades } from "@/lib/rbac";
 import { buildTimesheetXlsx } from "@/lib/excel";
-import { allDays } from "@/lib/payroll";
 import type { DayValue } from "@/generated/prisma/client";
 import { NextResponse } from "next/server";
 
@@ -35,8 +34,6 @@ export async function GET(
   if (!isAdmin && timesheet.objectId !== session.user.objectId) {
     return new NextResponse("Forbidden", { status: 403 });
   }
-
-  const days = allDays(timesheet.year, timesheet.month);
 
   const deptMap = new Map<string, { name: string; rows: Parameters<typeof buildTimesheetXlsx>[0]["deptGroups"][number]["rows"] }>();
   for (const row of timesheet.rows) {

@@ -11,7 +11,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
-import type { MergedRow, RowGroup } from "./page";
+import type { RowGroup } from "./page";
 
 const DAY_CYCLE: DayValue[] = ["FULL", "HALF", "QUARTER", "THREE_QUARTERS", "SICK", "ABSENT"];
 const DAY_LABEL: Record<DayValue, string> = {
@@ -351,7 +351,6 @@ export function FullTimesheetGrid({ days, deptGroups, showObject: showObjectProp
           <tbody>
             {displayedGroups.map((group) => {
               const groupKey = `${group.objectName}\0${group.foremanName}\0${group.deptName}`;
-              const headerParts = [group.objectName, group.foremanName, group.deptName].filter(Boolean);
               return (
                 <React.Fragment key={groupKey}>
                   {group.deptName && (

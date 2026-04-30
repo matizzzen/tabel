@@ -277,7 +277,7 @@ export function TimesheetGrid({ timesheetId, days, deptGroups, isAdmin, canEdit 
   const allDeptNames = useMemo(() => [...new Set(deptGroups.map((g) => g.name))].sort((a, b) => a.localeCompare(b, "ru")), [deptGroups]);
 
   const displayedGroups = useMemo(() => {
-    let groups = filterDept === "all" ? deptGroups : deptGroups.filter((g) => g.name === filterDept);
+    const groups = filterDept === "all" ? deptGroups : deptGroups.filter((g) => g.name === filterDept);
 
     if (sortMode === "name") {
       const allRows = groups.flatMap((g) => g.rows).sort((a, b) => a.fullName.localeCompare(b.fullName, "ru"));

@@ -2,7 +2,6 @@ import { auth } from "@/auth";
 import { prisma } from "@/lib/db";
 import { canViewAllBrigades } from "@/lib/rbac";
 import { buildTimesheetXlsx } from "@/lib/excel";
-import { allDays } from "@/lib/payroll";
 import type { DayValue } from "@/generated/prisma/client";
 import { NextResponse } from "next/server";
 
@@ -38,7 +37,6 @@ export async function GET(req: Request) {
     },
   });
 
-  const days = allDays(year, month);
   const deptMap = new Map<string, { name: string; rows: Parameters<typeof buildTimesheetXlsx>[0]["deptGroups"][number]["rows"] }>();
 
   for (const ts of timesheets) {
